@@ -30,6 +30,8 @@ public class TaskQuery {
     public static final int SORT_PRIORITY = 2;
     public static final int SORT_NEWEST = 3;
     public static final int SORT_ALPHA = 4;
+    /** Keep the project's own task order (what drag-to-reorder saves). */
+    public static final int SORT_MANUAL = 5;
 
     // Menu texts. Index 0 is "all" for status/priority, so choice index = value + 1.
     public static final String[] STATUS_OPTIONS = {"All statuses", "To do", "In progress", "Done"};
@@ -37,13 +39,14 @@ public class TaskQuery {
     public static final String[] DATE_OPTIONS = {"All dates", "Today", "Overdue", "No due date"};
     public static final String[] SORT_OPTIONS = {
             "Due date (earliest first)", "Due date (latest first)",
-            "Priority (High to Low)", "Newest first", "Description (A-Z)"};
+            "Priority (High to Low)", "Newest first", "Description (A-Z)",
+            "Manual order (drag to reorder)"};
 
     // Short texts for the filter pills.
     public static final String[] STATUS_SHORT = {"All", "To do", "In progress", "Done"};
     public static final String[] PRIORITY_SHORT = {"All", "High", "Normal", "Low"};
     public static final String[] DATE_SHORT = {"All", "Today", "Overdue", "No due date"};
-    public static final String[] SORT_SHORT = {"Due date \u2191", "Due date \u2193", "Priority", "Newest", "A-Z"};
+    public static final String[] SORT_SHORT = {"Due date \u2191", "Due date \u2193", "Priority", "Newest", "A-Z", "Manual"};
 
     private static final String KEY_SEARCH = "query_search";
     private static final String KEY_STATUS = "query_status";
@@ -113,7 +116,9 @@ public class TaskQuery {
                 result.add(task);
             }
         }
-        Collections.sort(result, comparator());
+        if (sort != SORT_MANUAL) {
+            Collections.sort(result, comparator());
+        }
         return result;
     }
 

@@ -4,7 +4,10 @@ import android.os.Parcel;
 import android.os.Parcelable;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -112,6 +115,35 @@ public class Project implements Parcelable {
             }
         }
         return false;
+    }
+
+    /**
+     * Saves a manual order (used by drag-to-reorder). "orderedIds" are the ids of some
+     * of this project's tasks, in the order they should now appear. Those tasks take
+     * turns filling the list positions they already occupy, so every task that is NOT
+     * in orderedIds (for example one hidden by a filter) keeps its place. Unknown ids
+     * or duplicates make this do nothing.
+     */
+    public void applyTaskOrder(List<String> orderedIds) {
+        Set<String> wanted = new HashSet<>(orderedIds);
+        if (wanted.size() != orderedIds.size()) {
+            return;
+        }
+        Map<String, Task> byId = new HashMap<>();
+        ArrayList<Integer> slots = new ArrayList<>();
+        for (int i = 0; i < tasks.size(); i++) {
+            Task task = tasks.get(i);
+            if (wanted.contains(task.getId())) {
+                byId.put(task.getId(), task);
+                slots.add(i);
+            }
+        }
+        if (slots.size() != orderedIds.size()) {
+            return;
+        }
+        for (int k = 0; k < slots.size(); k++) {
+            tasks.set(slots.get(k), byId.get(orderedIds.get(k)));
+        }
     }
 
     public int getTotalTaskCount() {
