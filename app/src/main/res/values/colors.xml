@@ -42,4 +42,10 @@
     <color name="dot_progress">#2F9BF4</color>
     <color name="dot_done">#12B76A</color>
     <color name="dot_overdue">#F04461</color>
+
+    <!-- Assignment 4: group header colours on the Tasks tab -->
+    <color name="group_overdue">#E5383B</color>
+    <color name="group_progress">#22C55E</color>
+    <color name="group_todo">#2F9BF4</color>
+    <color name="group_done">#22C55E</color>
 </resources>
