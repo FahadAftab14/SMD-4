@@ -2,15 +2,17 @@ package com.example.taskflow;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.view.View;
 import android.widget.EditText;
-import android.widget.ListView;
 import android.widget.TextView;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
-import com.example.taskflow.adapters.ProjectListAdapter;
+import com.example.taskflow.adapters.ProjectAdapter;
 import com.example.taskflow.data.AttachmentCatalog;
 import com.example.taskflow.data.Project;
 import com.example.taskflow.data.SampleData;
@@ -22,8 +24,9 @@ import java.util.Locale;
 import java.util.UUID;
 
 /**
- * Home screen. It owns the FULL project collection (allProjects). The ListView
- * shows shownProjects, which is allProjects filtered by the search text.
+ * Home screen. It owns the FULL project collection (allProjects). The RecyclerView shows
+ * allProjects filtered by the search text. Every change is sent to the adapter as a NEW list
+ * with submitList(); ListAdapter + DiffUtil then refresh only the rows that changed.
  * Projects are always found by their unique id, never by name or row position.
  */
 public class HomeActivity extends AppCompatActivity {
@@ -31,12 +34,12 @@ public class HomeActivity extends AppCompatActivity {
     private static final String STATE_PROJECTS = "state_projects";
 
     private final ArrayList<Project> allProjects = new ArrayList<>();
-    private final ArrayList<Project> shownProjects = new ArrayList<>();
-    private ProjectListAdapter adapter;
+    private ProjectAdapter adapter;
     private String searchQuery = "";
 
     private TextView tvShowingCount;
-    private ListView listProjects;
+    private TextView tvProjectsEmpty;
+    private RecyclerView rvProjects;
 
     private ActivityResultLauncher<Intent> projectLauncher;
 
@@ -48,7 +51,7 @@ public class HomeActivity extends AppCompatActivity {
         registerProjectLauncher();
         loadProjects(savedInstanceState);
         initViews();
-        applyFilter();
+        showProjects(null);
     }
 
     @Override
@@ -74,28 +77,28 @@ public class HomeActivity extends AppCompatActivity {
         tvWelcome.setText(getString(R.string.welcome_message, "Fahad"));
 
         tvShowingCount = findViewById(R.id.tvShowingProjects);
-        listProjects = findViewById(R.id.listProjects);
-        listProjects.setEmptyView(findViewById(R.id.tvProjectsEmpty));
+        tvProjectsEmpty = findViewById(R.id.tvProjectsEmpty);
+        rvProjects = findViewById(R.id.rvProjects);
 
-        adapter = new ProjectListAdapter(this, shownProjects);
-        listProjects.setAdapter(adapter);
-
-        // Clicking a row opens that project. The row's Project object is handed over
-        // through an intent extra; Home later finds it again by its id.
-        listProjects.setOnItemClickListener((parent, row, position, id) -> {
-            Project clicked = adapter.getItem(position);
-            Intent intent = new Intent(HomeActivity.this, ProjectActivity.class);
-            intent.putExtra(ProjectActivity.EXTRA_PROJECT, clicked);
-            projectLauncher.launch(intent);
-        });
+        // Clicking a row opens that project. The Project object is handed over through an
+        // intent extra; Home later finds it again by its id.
+        adapter = new ProjectAdapter(this::openProject);
+        rvProjects.setLayoutManager(new LinearLayoutManager(this));
+        rvProjects.setAdapter(adapter);
 
         EditText etSearch = findViewById(R.id.etProjectSearch);
         etSearch.addTextChangedListener(new SimpleTextWatcher(text -> {
             searchQuery = text;
-            applyFilter();
+            showProjects(null);
         }));
 
         findViewById(R.id.btnNewProject).setOnClickListener(v -> showNewProjectDialog());
+    }
+
+    private void openProject(Project project) {
+        Intent intent = new Intent(HomeActivity.this, ProjectActivity.class);
+        intent.putExtra(ProjectActivity.EXTRA_PROJECT, project);
+        projectLauncher.launch(intent);
     }
 
     private void showNewProjectDialog() {
@@ -105,40 +108,64 @@ public class HomeActivity extends AppCompatActivity {
             if (attachment != null) {
                 project.addAttachment(AttachmentCatalog.createLink(attachment));
             }
-            allProjects.add(project);
-            applyFilter();
-            int position = shownProjects.indexOf(project);
-            if (position >= 0) {
-                listProjects.setSelection(position);
-            }
+            allProjects.add(project); // appended at the end
+            showProjects(project.getId());
         });
     }
 
-    /** Search is case-insensitive and matches any part of the project name or tag. */
-    private void applyFilter() {
+    /**
+     * Applies the search to allProjects and submits the result as a NEW list.
+     * Search is case-insensitive and matches any part of the project name or tag.
+     *
+     * @param scrollToProjectId if not null, scroll to that project once the list is updated
+     */
+    private void showProjects(final String scrollToProjectId) {
         String needle = searchQuery.trim().toLowerCase(Locale.ROOT);
-        shownProjects.clear();
+        ArrayList<Project> filtered = new ArrayList<>();
         for (Project project : allProjects) {
             boolean matches = needle.isEmpty()
                     || project.getName().toLowerCase(Locale.ROOT).contains(needle)
                     || project.getTag().toLowerCase(Locale.ROOT).contains(needle);
             if (matches) {
-                shownProjects.add(project);
+                filtered.add(project);
             }
         }
-        adapter.notifyDataSetChanged();
+
+        // ListAdapter ignores a list it already has, so always hand it a new ArrayList.
+        final int scrollPosition = indexOfProject(filtered, scrollToProjectId);
+        adapter.submitList(filtered, new Runnable() {
+            @Override
+            public void run() {
+                if (scrollPosition >= 0) {
+                    rvProjects.scrollToPosition(scrollPosition);
+                }
+            }
+        });
+        tvProjectsEmpty.setVisibility(filtered.isEmpty() ? View.VISIBLE : View.GONE);
 
         int total = allProjects.size();
         if (needle.isEmpty()) {
             tvShowingCount.setText("Showing " + total + (total == 1 ? " project" : " projects"));
         } else {
-            tvShowingCount.setText("Showing " + shownProjects.size() + " of " + total + " projects");
+            tvShowingCount.setText("Showing " + filtered.size() + " of " + total + " projects");
         }
     }
 
+    private static int indexOfProject(ArrayList<Project> projects, String projectId) {
+        if (projectId == null) {
+            return -1;
+        }
+        for (int i = 0; i < projects.size(); i++) {
+            if (projects.get(i).getId().equals(projectId)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
     /**
-     * ProjectActivity sends back its (possibly changed) project. The matching Home
-     * project is replaced BY ID, so nothing is duplicated and no other project changes.
+     * ProjectActivity sends back its (possibly changed) project. The matching Home project is
+     * replaced BY ID, then a new list is submitted so only the changed row is refreshed.
      */
     private void registerProjectLauncher() {
         projectLauncher = registerForActivityResult(
@@ -158,7 +185,7 @@ public class HomeActivity extends AppCompatActivity {
                             break;
                         }
                     }
-                    applyFilter();
+                    showProjects(null);
                 });
     }
 }

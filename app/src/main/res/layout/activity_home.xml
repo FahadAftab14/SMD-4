@@ -132,14 +132,11 @@
         android:layout_height="0dp"
         android:layout_weight="1">
 
-        <ListView
-            android:id="@+id/listProjects"
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvProjects"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:clipToPadding="false"
-            android:divider="@android:color/transparent"
-            android:dividerHeight="0dp"
-            android:listSelector="@android:color/transparent"
             android:paddingHorizontal="16dp"
             android:scrollbars="none" />
 
