@@ -78,14 +78,11 @@
         android:layout_height="0dp"
         android:layout_weight="1">
 
-        <ListView
-            android:id="@+id/listFiles"
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvFiles"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:clipToPadding="false"
-            android:divider="@android:color/transparent"
-            android:dividerHeight="0dp"
-            android:listSelector="@android:color/transparent"
             android:scrollbars="none" />
 
         <!-- State 1: no attachments linked at all -->

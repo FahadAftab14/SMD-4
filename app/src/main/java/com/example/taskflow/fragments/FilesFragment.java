@@ -5,19 +5,22 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.EditText;
-import android.widget.ListView;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.recyclerview.widget.ItemTouchHelper;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
 import com.example.taskflow.R;
-import com.example.taskflow.adapters.AttachmentListAdapter;
+import com.example.taskflow.adapters.AttachmentAdapter;
 import com.example.taskflow.data.AttachmentCatalog;
 import com.example.taskflow.data.AttachmentLink;
 import com.example.taskflow.data.CatalogItem;
 import com.example.taskflow.data.Project;
 import com.example.taskflow.ui.AttachmentPreviewDialog;
+import com.example.taskflow.ui.AttachmentSwipeCallback;
 import com.example.taskflow.ui.CatalogPickerDialog;
 import com.example.taskflow.ui.RemoveAttachmentDialog;
 import com.example.taskflow.util.SimpleTextWatcher;
@@ -26,11 +29,13 @@ import java.util.ArrayList;
 import java.util.Locale;
 
 /**
- * The project's attachment links: search + All/Images/Text chips, preview,
- * add from the catalog and remove with typed confirmation. Chip counts always
- * refer to the complete collection, not the filtered list.
+ * The project's attachment links in a RecyclerView: search + All/Images/Text chips,
+ * Preview, add from the catalog, and remove (by the row's remove icon OR by swiping the
+ * row to the right) with typed-name confirmation. Chip counts always refer to the
+ * complete collection, not the filtered list.
  */
-public class FilesFragment extends ProjectTabFragment implements AttachmentListAdapter.Listener {
+public class FilesFragment extends ProjectTabFragment
+        implements AttachmentAdapter.Listener, AttachmentSwipeCallback.Listener {
 
     private static final int TYPE_ALL = 0;
     private static final int TYPE_IMAGES = 1;
@@ -41,15 +46,14 @@ public class FilesFragment extends ProjectTabFragment implements AttachmentListA
 
     private String search = "";
     private int typeFilter = TYPE_ALL;
-    private final ArrayList<AttachmentLink> shownLinks = new ArrayList<>();
-    private AttachmentListAdapter adapter;
+    private AttachmentAdapter adapter;
 
     private EditText etSearch;
     private TextView chipAll;
     private TextView chipImages;
     private TextView chipText;
     private TextView tvShowing;
-    private ListView listFiles;
+    private RecyclerView rvFiles;
     private View emptyNoAttachments;
     private View emptyNoMatch;
 
@@ -89,12 +93,15 @@ public class FilesFragment extends ProjectTabFragment implements AttachmentListA
         chipImages = view.findViewById(R.id.chipImages);
         chipText = view.findViewById(R.id.chipText);
         tvShowing = view.findViewById(R.id.tvShowingAttachments);
-        listFiles = view.findViewById(R.id.listFiles);
+        rvFiles = view.findViewById(R.id.rvFiles);
         emptyNoAttachments = view.findViewById(R.id.emptyNoAttachments);
         emptyNoMatch = view.findViewById(R.id.emptyNoAttachmentMatch);
 
-        adapter = new AttachmentListAdapter(requireContext(), shownLinks, this);
-        listFiles.setAdapter(adapter);
+        adapter = new AttachmentAdapter(requireContext(), this);
+        rvFiles.setLayoutManager(new LinearLayoutManager(requireContext()));
+        rvFiles.setAdapter(adapter);
+        new ItemTouchHelper(new AttachmentSwipeCallback(requireContext(), adapter, this))
+                .attachToRecyclerView(rvFiles);
 
         etSearch.setText(search);
         etSearch.addTextChangedListener(new SimpleTextWatcher(text -> {
@@ -144,7 +151,7 @@ public class FilesFragment extends ProjectTabFragment implements AttachmentListA
         int total = project.getAttachments().size();
         int imageCount = 0;
         int textCount = 0;
-        shownLinks.clear();
+        ArrayList<AttachmentLink> matches = new ArrayList<>();
 
         // Links stay in the order they were added.
         for (AttachmentLink link : project.getAttachments()) {
@@ -161,10 +168,11 @@ public class FilesFragment extends ProjectTabFragment implements AttachmentListA
             String name = item != null ? item.getDisplayName() : "";
             boolean searchMatches = needle.isEmpty() || name.toLowerCase(Locale.ROOT).contains(needle);
             if (typeMatches && searchMatches) {
-                shownLinks.add(link);
+                matches.add(link);
             }
         }
-        adapter.notifyDataSetChanged();
+        // A NEW list every time: ListAdapter + DiffUtil work out which rows changed.
+        adapter.submitList(matches);
 
         chipAll.setText("All (" + total + ")");
         chipImages.setText("Images (" + imageCount + ")");
@@ -173,18 +181,18 @@ public class FilesFragment extends ProjectTabFragment implements AttachmentListA
         styleChip(chipImages, typeFilter == TYPE_IMAGES);
         styleChip(chipText, typeFilter == TYPE_TEXT);
 
-        tvShowing.setText("Showing " + shownLinks.size() + " of " + total + " attachments");
+        tvShowing.setText("Showing " + matches.size() + " of " + total + " attachments");
 
         if (total == 0) {
-            listFiles.setVisibility(View.GONE);
+            rvFiles.setVisibility(View.GONE);
             emptyNoAttachments.setVisibility(View.VISIBLE);
             emptyNoMatch.setVisibility(View.GONE);
-        } else if (shownLinks.isEmpty()) {
-            listFiles.setVisibility(View.GONE);
+        } else if (matches.isEmpty()) {
+            rvFiles.setVisibility(View.GONE);
             emptyNoAttachments.setVisibility(View.GONE);
             emptyNoMatch.setVisibility(View.VISIBLE);
         } else {
-            listFiles.setVisibility(View.VISIBLE);
+            rvFiles.setVisibility(View.VISIBLE);
             emptyNoAttachments.setVisibility(View.GONE);
             emptyNoMatch.setVisibility(View.GONE);
         }
@@ -195,20 +203,47 @@ public class FilesFragment extends ProjectTabFragment implements AttachmentListA
         chip.setTextColor(requireContext().getColor(selected ? R.color.card_white : R.color.text_primary));
     }
 
+    // ---------------- row actions ----------------
+
     @Override
     public void onPreview(AttachmentLink link) {
         CatalogItem item = AttachmentCatalog.findById(link.getCatalogId());
         AttachmentPreviewDialog.show(requireContext(), link, item);
     }
 
+    /** The remove icon on a row. */
     @Override
     public void onRemove(AttachmentLink link) {
+        confirmRemoval(link);
+    }
+
+    /** Swiping a row to the right. */
+    @Override
+    public void onSwipedRight(AttachmentLink link) {
+        confirmRemoval(link);
+    }
+
+    /**
+     * Removes the link only after the typed name matches. If the user cancels (or closes the
+     * dialog), the link stays and the row is put back where it was.
+     */
+    private void confirmRemoval(AttachmentLink link) {
         CatalogItem item = AttachmentCatalog.findById(link.getCatalogId());
         String name = item != null ? item.getDisplayName() : "";
         final String linkId = link.getId();
-        RemoveAttachmentDialog.show(requireContext(), name, () -> {
-            currentProject().removeAttachment(linkId);
-            host.onProjectDataChanged();
-        });
+        RemoveAttachmentDialog.show(requireContext(), name,
+                () -> {
+                    currentProject().removeAttachment(linkId);
+                    host.onProjectDataChanged();
+                },
+                () -> restoreRow(linkId));
+    }
+
+    /** Puts a swiped row back (rebinding it also resets its sideways offset). */
+    private void restoreRow(String linkId) {
+        int position = adapter.positionOfLink(linkId);
+        if (position >= 0) {
+            adapter.notifyItemChanged(position);
+        }
     }
 }
