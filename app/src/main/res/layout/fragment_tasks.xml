@@ -118,14 +118,11 @@
         android:layout_height="0dp"
         android:layout_weight="1">
 
-        <ListView
-            android:id="@+id/listTasks"
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvTasks"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:clipToPadding="false"
-            android:divider="@android:color/transparent"
-            android:dividerHeight="0dp"
-            android:listSelector="@android:color/transparent"
             android:scrollbars="none" />
 
         <!-- State 1: the project has no tasks at all -->
